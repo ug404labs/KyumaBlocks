@@ -21,32 +21,11 @@ load_dotenv()
 BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 CONTRACT_ADDRESS = os.getenv('CONTRACT_ADDRESS')
 CHAINSTACK_NODE_URL = os.getenv('CHAINSTACK_NODE_URL')
-
 FAUCET_ADDRESS = os.getenv('FAUCET_ADDRESS')
 FAUCET_PRIVATE_KEY = os.getenv('FAUCET_PRIVATE_KEY')
 
-# Use SQLite
-DB_URL = "sqlite:///users.db"
-
-# Web3 setup
-web3 = Web3(Web3.HTTPProvider(CHAINSTACK_NODE_URL))
-if web3.is_connected():
-    logger.info("Connected to Ethereum network")
-else:
-    logger.error("Failed to connect to Ethereum network")
-    raise Exception("Failed to connect to Ethereum network")
-
-# Load contract ABI
-try:
-    with open('contracts/contract.abi.json', 'r') as abi_file:
-        contract_abi = json.load(abi_file)
-    contract = web3.eth.contract(address=CONTRACT_ADDRESS, abi=contract_abi)
-    logger.info(f'Contract loaded: {contract}')
-except Exception as e:
-    logger.error(f"Error loading contract: {e}")
-    raise
-
 # Database setup
+DB_URL = "sqlite:///users.db"
 Base = declarative_base()
 
 
@@ -64,14 +43,27 @@ engine = create_engine(DB_URL)
 Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 
+# Web3 setup
+web3 = Web3(Web3.HTTPProvider(CHAINSTACK_NODE_URL))
+if not web3.is_connected():
+    raise Exception("Failed to connect to Ethereum network")
+
+# Load contract ABI
+with open('contracts/contract.abi.json', 'r') as abi_file:
+    contract_abi = json.load(abi_file)
+contract = web3.eth.contract(address=CONTRACT_ADDRESS, abi=contract_abi)
+
 # Initialize GasTracker
 gas_tracker = GasTracker(CHAINSTACK_NODE_URL, FAUCET_ADDRESS, FAUCET_PRIVATE_KEY)
 
-TERMS, PASSWORD, MAIN_MENU, EARN, BUYER, WALLET, DONATE, REGISTER, CLAIM_GAS, RECYCLE, CREATE_ERRAND, COMPLETE_ERRAND, REGISTER_BUYER, PROCESS_EWASTE, PAY_FOR_EWASTE = range(15)
+# Define conversation states
+(TERMS, PASSWORD, MAIN_MENU, EARN, BUYER, WALLET, DONATE, REGISTER, CLAIM_GAS,
+ RECYCLE, CREATE_ERRAND, COMPLETE_ERRAND, REGISTER_BUYER, PROCESS_EWASTE, PAY_FOR_EWASTE) = range(15)
 
 
 # Helper functions
 def get_user(telegram_id):
+    """Retrieve user from database."""
     session = Session()
     user = session.query(User).filter_by(telegram_id=str(telegram_id)).first()
     session.close()
@@ -79,6 +71,7 @@ def get_user(telegram_id):
 
 
 def create_user(telegram_id, wallet_address, private_key):
+    """Create a new user in the database."""
     session = Session()
     user = User(telegram_id=str(telegram_id), wallet_address=wallet_address, private_key=private_key)
     session.add(user)
@@ -88,9 +81,9 @@ def create_user(telegram_id, wallet_address, private_key):
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Start the bot and guide user through registration process."""
     user = get_user(update.effective_user.id)
     if user:
-        # Check if user is registered on the blockchain
         is_registered = contract.functions.users(user.wallet_address).call()[0]
         if is_registered:
             return await show_main_menu(update, context)
@@ -100,24 +93,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         eth_balance = float("{:.4f}".format(web3.from_wei(eth_balance, 'ether')))
 
         await update.message.reply_text(
-            f'Welcome back! You already have a wallet: `{user.wallet_address}`.\n\n'
-            f'Your Kyuma token balance is: `{token_balance}`\n'
-            f'Your ETH balance is: `{eth_balance}`\n\n'
-            f'Please register on the blockchain to continue.',
+            f"Welcome back! 👋\n\n"
+            f"Your wallet: `{user.wallet_address}`\n"
+            f"KBT balance: `{token_balance}`\n"
+            f"ETH balance: `{eth_balance}`\n\n"
+            f"Ready to make a difference? Let's get you registered on the blockchain!",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("⛽ Claim Gas", callback_data='claim_gas')],
+                [InlineKeyboardButton("⛽ Get Free Gas", callback_data='claim_gas')],
                 [InlineKeyboardButton("🔑 Register on Blockchain", callback_data='register')]
             ])
         )
         return REGISTER
 
     await update.message.reply_text(
-        '👋 Welcome to the E-Waste Recycling Bot! ♻️📱\n\n'
-        'Before we begin, please read and agree to our terms and conditions:\n\n'
-        '1. Your data will be stored securely.\n'
-        '2. You are responsible for your account activities.\n'
-        '3. We respect your privacy and will not share your information.\n\n'
-        'Do you agree to these terms?',
+        "Welcome to KyumaBlocks - Your E-Waste Recycling Partner! ♻️📱\n\n"
+        "Before we start, please review our terms:\n\n"
+        "1️⃣ We keep your data safe and secure.\n"
+        "2️⃣ You're in charge of your account activities.\n"
+        "3️⃣ We respect your privacy.\n\n"
+        "Ready to join the eco-friendly revolution?",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("✅ I Agree", callback_data='agree')],
             [InlineKeyboardButton("❌ I Disagree", callback_data='disagree')]
@@ -126,74 +120,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return TERMS
 
 
-async def register_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    user = get_user(query.from_user.id)
-    wallet_address = user.wallet_address
-
-    try:
-        # Estimate gas for the registration
-        gas_estimate = gas_tracker.estimate_gas(wallet_address, CONTRACT_ADDRESS,
-                                                contract.functions.registerUser().build_transaction()['data'])
-
-        if gas_estimate is None:
-            raise Exception("Failed to estimate gas for registration")
-
-        # Ensure sufficient gas
-        if not gas_tracker.ensure_sufficient_gas(wallet_address, gas_estimate):
-            await query.edit_message_text("Insufficient funds for registration. Please try again later.")
-            return REGISTER
-
-        # Proceed with registration
-        nonce = web3.eth.get_transaction_count(wallet_address)
-        chain_id = web3.eth.chain_id
-
-        transaction = contract.functions.registerUser().build_transaction({
-            'chainId': chain_id,
-            'gas': int(gas_estimate * 1.2),  # Add 20% buffer
-            'gasPrice': web3.eth.gas_price,
-            'nonce': nonce,
-        })
-
-        signed_txn = web3.eth.account.sign_transaction(transaction, private_key=user.private_key)
-        tx_hash = web3.eth.send_raw_transaction(signed_txn.raw_transaction)
-        tx_receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
-        print(tx_receipt)
-
-        if tx_receipt['status'] == 1:
-            await query.edit_message_text(
-                f'🎉 You have been registered successfully on the blockchain!\n\n'
-                f'Welcome to the E-Waste Recycling System. You can now start using the main features.'
-            )
-            return await show_main_menu(update, context)
-        else:
-            raise Exception("Transaction failed")
-
-    except Exception as e:
-        logging.error(f"Error in register_user: {str(e)}")
-        await query.edit_message_text(
-            f'❌ Registration failed: {str(e)}\n\n'
-            f'Please try again later.',
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔙 Back to Main Menu", callback_data='main_menu')]
-            ])
-        )
-        return MAIN_MENU
 async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Display the main menu with all available options."""
     keyboard = [
-        [InlineKeyboardButton("💰 Earn", callback_data='earn'),
-         InlineKeyboardButton("🛒 Buyer", callback_data='buyer')],
-        [InlineKeyboardButton("👛 My Wallet", callback_data='wallet'),
-         InlineKeyboardButton("🎁 Donate", callback_data='donate')],
-        [InlineKeyboardButton("♻️ Recycle E-Waste", callback_data='recycle'),
-         InlineKeyboardButton("📋 Create Errand", callback_data='create_errand')],
-        [InlineKeyboardButton("✅ Complete Errand", callback_data='complete_errand'),
-         InlineKeyboardButton("📊 My Stats", callback_data='my_stats')]
+        [InlineKeyboardButton("💰 Earn & Recycle", callback_data='earn')],
+        [InlineKeyboardButton("🛒 Buyer Zone", callback_data='buyer')],
+        [InlineKeyboardButton("👛 My Wallet", callback_data='wallet')],
+        [InlineKeyboardButton("🎁 Donate", callback_data='donate')],
+        [InlineKeyboardButton("📊 My Impact", callback_data='my_stats')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    message = '🏠 Main Menu - Choose an option:'
+    message = "🏠 Main Menu - What would you like to do today?"
 
     if update.message:
         await update.message.reply_text(message, reply_markup=reply_markup)
@@ -206,27 +143,25 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return MAIN_MENU
 
 
-async def main_menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    return await show_main_menu(update, context)
-
-
-# Modify the earn_handler function to include the List Errands button
 async def earn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle the Earn & Recycle menu options."""
     query = update.callback_query
     await query.answer()
 
     keyboard = [
         [InlineKeyboardButton("♻️ Recycle E-Waste", callback_data='recycle')],
-        [InlineKeyboardButton("📋 Create Errand", callback_data='create_errand')],
-        [InlineKeyboardButton("📜 List Errands", callback_data='list_errands')],
-        [InlineKeyboardButton("✅ Complete Errand", callback_data='complete_errand')],
+        [InlineKeyboardButton("📋 Create Task", callback_data='create_errand')],
+        [InlineKeyboardButton("📜 Available Tasks", callback_data='list_errands')],
+        [InlineKeyboardButton("✅ Complete Task", callback_data='complete_errand')],
         [InlineKeyboardButton("🔙 Back to Main Menu", callback_data='main_menu')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text("💰 Earn Menu - Choose an option:", reply_markup=reply_markup)
+    await query.edit_message_text("💰 Earn & Recycle - Choose an option:", reply_markup=reply_markup)
     return EARN
 
+
 async def buyer_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle the Buyer Zone menu options."""
     query = update.callback_query
     await query.answer()
 
@@ -237,25 +172,31 @@ async def buyer_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🔙 Back to Main Menu", callback_data='main_menu')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text("🛒 Buyer Menu - Choose an option:", reply_markup=reply_markup)
+    await query.edit_message_text("🛒 Buyer Zone - What would you like to do?", reply_markup=reply_markup)
     return BUYER
 
 
 async def recycle_ewaste(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Guide user through the e-waste recycling process."""
     query = update.callback_query
     await query.answer()
     await query.edit_message_text(
-        "Please enter the description and weight of the e-waste you want to recycle.\nFormat: description,weight")
+        "Let's recycle some e-waste! 🌱♻️\n\n"
+        "Please tell me about the e-waste you want to recycle.\n"
+        "Format: description, weight in kg\n\n"
+        "Example: Old smartphone, 0.2"
+    )
     return RECYCLE
 
 
 async def process_recycle(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Process the e-waste recycling request."""
     user = get_user(update.effective_user.id)
     try:
         description, weight = update.message.text.split(',')
-        weight = int(weight.strip())
+        weight = float(weight.strip())
 
-        tx = contract.functions.recycleEWaste(description, weight).build_transaction({
+        tx = contract.functions.recycleEWaste(description, int(weight * 1000)).build_transaction({
             'from': user.wallet_address,
             'nonce': web3.eth.get_transaction_count(user.wallet_address),
         })
@@ -265,151 +206,88 @@ async def process_recycle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if receipt.status == 1:
             await update.message.reply_text(
-                f"Successfully recycled {weight} units of e-waste. Thank you for recycling!")
+                f"🎉 Success! You've recycled {weight}kg of e-waste.\n"
+                f"Description: {description}\n\n"
+                f"Thank you for making a difference! 🌍"
+            )
         else:
-            await update.message.reply_text("Transaction failed. Please try again.")
+            await update.message.reply_text("Oops! The recycling process didn't work. Please try again.")
     except Exception as e:
         await update.message.reply_text(f"An error occurred: {str(e)}")
-    return await show_main_menu(update, context)
+    finally:
+        return await show_main_menu(update, context)
 
 
 async def create_errand(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text("Please enter the errand description and reward amount.\nFormat: description,reward")
-    return CREATE_ERRAND
-
-
-# Modify the create_errand function
-async def create_errand(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text("Please enter the An Ewaste description and reward amount.\nFormat: description,reward")
-    return CREATE_ERRAND
-
-
-
-
-async def complete_errand(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Guide user through creating a new task (errand)."""
     query = update.callback_query
     await query.answer()
     await query.edit_message_text(
-        "Please enter the ID of the errand you want to complete.",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔙 Back to Earn Menu", callback_data='earn')]
-        ])
+        "Let's create a new task! 📝\n\n"
+        "Please provide a description of the task and the reward amount.\n"
+        "Format: description, reward in KBT tokens\n\n"
+        "Example: Collect e-waste from local school, 50"
     )
-    return COMPLETE_ERRAND
+    return CREATE_ERRAND
 
 
 async def process_create_errand(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Process the task (errand) creation request."""
     user = get_user(update.effective_user.id)
     try:
         description, reward = update.message.text.split(',')
         reward = int(reward.strip())
 
-        # Check if user has enough balance
         user_balance = contract.functions.balanceOf(user.wallet_address).call()
         if user_balance < reward:
-            await update.message.reply_text(
-                f"Insufficient balance. You have {user_balance} tokens, but the errand requires {reward} tokens.")
+            await update.message.reply_text(f"Oops! You don't have enough tokens. Your balance: {user_balance} KBT")
             return await show_main_menu(update, context)
 
-        # Estimate gas for the transaction
-        gas_estimate = contract.functions.createErrand(description, reward).estimate_gas({
-            'from': user.wallet_address,
-        })
-
-        # Build the transaction
         tx = contract.functions.createErrand(description, reward).build_transaction({
             'from': user.wallet_address,
             'nonce': web3.eth.get_transaction_count(user.wallet_address),
-            'gas': int(gas_estimate * 1.2),  # Add 20% buffer to gas estimate
-            'gasPrice': web3.eth.gas_price,
         })
-
-        # Sign and send the transaction
         signed_tx = web3.eth.account.sign_transaction(tx, user.private_key)
-        tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        tx_hash = web3.eth.send_raw_transaction(signed_tx.raw_transaction)
         receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
 
         if receipt.status == 1:
-            # Get the errand ID from the event logs
             errand_created_event = contract.events.ErrandCreated().process_receipt(receipt)
             if errand_created_event:
                 errand_id = errand_created_event[0]['args']['id']
                 await update.message.reply_text(
-                    f"✅ Errand created successfully!\n\n"
-                    f"📌 Errand ID: {errand_id}\n"
-                    f"💰 Reward: {reward} tokens\n"
+                    f"🎉 Task created successfully!\n\n"
+                    f"📌 Task ID: {errand_id}\n"
+                    f"💰 Reward: {reward} KBT\n"
                     f"📝 Description: {description}\n\n"
-                    f"Someone can now complete this errand to earn the reward."
+                    f"Someone can now complete this task to earn the reward."
                 )
             else:
                 await update.message.reply_text(
-                    f"✅ Errand created successfully, but couldn't retrieve the ID.\n"
-                    f"💰 Reward: {reward} tokens\n"
+                    f"✅ Task created successfully, but we couldn't retrieve the ID.\n"
+                    f"💰 Reward: {reward} KBT\n"
                     f"📝 Description: {description}"
                 )
         else:
-            await update.message.reply_text("❌ Transaction failed. Please try again.")
+            await update.message.reply_text("Oops! Task creation failed. Please try again.")
     except ValueError as ve:
-        await update.message.reply_text(f"Invalid input: {str(ve)}\nPlease use the format: description,reward")
+        await update.message.reply_text(f"Invalid input: {str(ve)}\nPlease use the format: description, reward")
     except Exception as e:
         logging.error(f"Error in process_create_errand: {str(e)}")
         await update.message.reply_text(f"An error occurred: {str(e)}")
-
-    return await show_main_menu(update, context)
-
-async def process_complete_errand(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = get_user(update.effective_user.id)
-    try:
-        errand_id = int(update.message.text)
-
-        # Check if the errand exists and is not completed
-        errand = contract.functions.errands(errand_id).call()
-        if not errand[0]:  # Assuming the first element indicates if the errand exists
-            raise ValueError("Errand does not exist")
-        if errand[4]:  # Assuming the fifth element indicates if the errand is completed
-            raise ValueError("Errand has already been completed")
-
-        tx = contract.functions.completeErrand(errand_id).build_transaction({
-            'from': user.wallet_address,
-            'nonce': web3.eth.get_transaction_count(user.wallet_address),
-            'gas': 200000,  # Adjust the gas limit as needed
-            'gasPrice': web3.eth.gas_price
-        })
-        signed_tx = web3.eth.account.sign_transaction(tx, user.private_key)
-        tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
-        receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
-
-        if receipt.status == 1:
-            reward = errand[3]  # Assuming the fourth element is the reward amount
-            await update.message.reply_text(
-                f"Successfully completed errand {errand_id}.\n"
-                f"You have earned {reward} tokens!"
-            )
-        else:
-            await update.message.reply_text("Transaction failed. Please try again.")
-    except ValueError as ve:
-        await update.message.reply_text(str(ve))
-    except Exception as e:
-        await update.message.reply_text(f"An error occurred: {str(e)}")
-
-    return await show_main_menu(update, context)
+    finally:
+        return await show_main_menu(update, context)
 
 
-# Add a new function to list available errands
 async def list_errands(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Display a list of available tasks (errands)."""
     query = update.callback_query
     await query.answer()
 
     try:
-        # Get the total number of errands
         total_errands = contract.functions.getErrandCount().call()
         available_errands = []
 
-        # Iterate through errands and check if they're available
         for i in range(total_errands):
             errand = contract.functions.errands(i).call()
             if not errand[4]:  # If not completed
@@ -420,9 +298,9 @@ async def list_errands(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 })
 
         if available_errands:
-            errand_list = "Available Errands:\n\n"
+            errand_list = "📋 Available Tasks:\n\n"
             for errand in available_errands:
-                errand_list += f"ID: {errand['id']}\nDescription: {errand['description']}\nReward: {errand['reward']} tokens\n\n"
+                errand_list += f"🔢 ID: {errand['id']}\n📝 Task: {errand['description']}\n💰 Reward: {errand['reward']} KBT\n\n"
 
             await query.edit_message_text(
                 errand_list,
@@ -432,30 +310,82 @@ async def list_errands(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         else:
             await query.edit_message_text(
-                "No available errands at the moment.",
+                "No tasks available at the moment. Why not create one? 😊",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("🔙 Back to Earn Menu", callback_data='earn')]
                 ])
             )
     except Exception as e:
         await query.edit_message_text(
-            f"An error occurred while fetching errands: {str(e)}",
+            f"Oops! We couldn't fetch the tasks: {str(e)}",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🔙 Back to Earn Menu", callback_data='earn')]
             ])
         )
-    return EARN
+        return EARN
 
-
-async def register_buyer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def complete_errand(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Guide user through completing a task (errand)."""
     query = update.callback_query
     await query.answer()
     await query.edit_message_text(
-        "Please enter your name, location, and additional info to register as a buyer.\nFormat: name,location,additional_info")
+        "Ready to complete a task? Great! 🎉\n\n"
+        "Please enter the ID of the task you've completed."
+    )
+    return COMPLETE_ERRAND
+
+async def process_complete_errand(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Process the task (errand) completion request."""
+    user = get_user(update.effective_user.id)
+    try:
+        errand_id = int(update.message.text)
+
+        errand = contract.functions.errands(errand_id).call()
+        if not errand[0]:
+            raise ValueError("This task doesn't exist. Double-check the ID and try again.")
+        if errand[4]:
+            raise ValueError("This task has already been completed. Try another one!")
+
+        tx = contract.functions.completeErrand(errand_id).build_transaction({
+            'from': user.wallet_address,
+            'nonce': web3.eth.get_transaction_count(user.wallet_address),
+            'gas': 200000,
+            'gasPrice': web3.eth.gas_price
+        })
+        signed_tx = web3.eth.account.sign_transaction(tx, user.private_key)
+        tx_hash = web3.eth.send_raw_transaction(signed_tx.raw_transaction)
+        receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
+
+        if receipt.status == 1:
+            reward = errand[3]
+            await update.message.reply_text(
+                f"🎉 Congratulations! You've completed task {errand_id}.\n"
+                f"💰 You've earned {reward} KBT tokens!\n\n"
+                f"Keep up the great work! 👏"
+            )
+        else:
+            await update.message.reply_text("Oops! Something went wrong. Please try again.")
+    except ValueError as ve:
+        await update.message.reply_text(str(ve))
+    except Exception as e:
+        await update.message.reply_text(f"An error occurred: {str(e)}")
+    finally:
+        return await show_main_menu(update, context)
+
+async def register_buyer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Guide user through the buyer registration process."""
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text(
+        "Let's get you registered as a buyer! 🛒\n\n"
+        "Please provide your name, location, and any additional info.\n"
+        "Format: name, location, additional info\n\n"
+        "Example: John Doe, New York, Interested in smartphones"
+    )
     return REGISTER_BUYER
 
-
 async def process_register_buyer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Process the buyer registration request."""
     user = get_user(update.effective_user.id)
     try:
         name, location, additional_info = update.message.text.split(',')
@@ -470,24 +400,30 @@ async def process_register_buyer(update: Update, context: ContextTypes.DEFAULT_T
         receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
 
         if receipt.status == 1:
-            await update.message.reply_text(f"Successfully registered as a buyer.")
+            await update.message.reply_text(
+                f"🎉 Congratulations, {name.strip()}!\n\n"
+                f"You're now registered as a buyer. Welcome aboard! 🚀\n"
+                f"You can now process e-waste and contribute to our circular economy."
+            )
         else:
-            await update.message.reply_text("Transaction failed. Please try again.")
+            await update.message.reply_text("Oops! Registration failed. Please try again.")
     except Exception as e:
         await update.message.reply_text(f"An error occurred: {str(e)}")
-    return await show_main_menu(update, context)
-
+    finally:
+        return await show_main_menu(update, context)
 
 async def process_ewaste(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Guide buyer through processing e-waste."""
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text("Please enter the ID of the e-waste you want to process.")
+    await query.edit_message_text(
+        "Ready to process some e-waste? Great! 🔧\n\n"
+        "Please enter the ID of the e-waste you want to process."
+    )
     return PROCESS_EWASTE
 
-
-
-
 async def process_process_ewaste(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Process the e-waste processing request."""
     user = get_user(update.effective_user.id)
     try:
         ewaste_id = int(update.message.text)
@@ -501,23 +437,31 @@ async def process_process_ewaste(update: Update, context: ContextTypes.DEFAULT_T
         receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
 
         if receipt.status == 1:
-            await update.message.reply_text(f"Successfully processed e-waste with ID {ewaste_id}.")
+            await update.message.reply_text(
+                f"✅ E-waste with ID {ewaste_id} has been processed successfully!\n\n"
+                f"Thank you for contributing to a cleaner environment. 🌿"
+            )
         else:
-            await update.message.reply_text("Transaction failed. Please try again.")
+            await update.message.reply_text("Oops! Processing failed. Please try again.")
     except Exception as e:
         await update.message.reply_text(f"An error occurred: {str(e)}")
-    return await show_main_menu(update, context)
-
+    finally:
+        return await show_main_menu(update, context)
 
 async def pay_for_ewaste(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Guide buyer through paying for e-waste."""
     query = update.callback_query
     await query.answer()
     await query.edit_message_text(
-        "Please enter the recycler's address and the amount you want to pay.\nFormat: address,amount")
+        "Time to pay for e-waste! 💳\n\n"
+        "Please enter the recycler's address and the amount you want to pay.\n"
+        "Format: address, amount\n\n"
+        "Example: 0x1234...5678, 100"
+    )
     return PAY_FOR_EWASTE
 
-
 async def process_pay_for_ewaste(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Process the payment for e-waste."""
     user = get_user(update.effective_user.id)
     try:
         recycler_address, amount = update.message.text.split(',')
@@ -532,15 +476,20 @@ async def process_pay_for_ewaste(update: Update, context: ContextTypes.DEFAULT_T
         receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
 
         if receipt.status == 1:
-            await update.message.reply_text(f"Successfully paid {amount} tokens to {recycler_address}.")
+            await update.message.reply_text(
+                f"✅ Payment successful!\n\n"
+                f"You've paid {amount} KBT to {recycler_address.strip()}.\n"
+                f"Thank you for supporting our recyclers! 🌟"
+            )
         else:
-            await update.message.reply_text("Transaction failed. Please try again.")
+            await update.message.reply_text("Oops! Payment failed. Please try again.")
     except Exception as e:
         await update.message.reply_text(f"An error occurred: {str(e)}")
-    return await show_main_menu(update, context)
-
+    finally:
+        return await show_main_menu(update, context)
 
 async def my_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Display user's statistics and impact."""
     query = update.callback_query
     await query.answer()
     user = get_user(query.from_user.id)
@@ -551,47 +500,61 @@ async def my_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         token_balance = contract.functions.balanceOf(user.wallet_address).call()
 
         stats_message = (
-            f"🏆 Your Stats:\n\n"
+            f"📊 Your Impact Stats:\n\n"
             f"🌟 Reputation: {reputation}\n"
-            f"♻️ Total Recycled: {recycled_amount} units\n"
-            f"💰 Token Balance: {token_balance} KBT"
+            f"♻️ Total Recycled: {recycled_amount / 1000:.2f} kg\n"
+            f"💰 KBT Balance: {token_balance} KBT\n\n"
+            f"Wow! You're making a real difference. Keep it up! 🌍👏"
         )
 
-        await query.edit_message_text(stats_message, reply_markup=InlineKeyboardMarkup(
-            [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data='main_menu')]]))
+        await query.edit_message_text(
+            stats_message,
+            reply_markup=InlineKeyboardMarkup(
+                [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data='main_menu')]])
+        )
     except Exception as e:
-        await query.edit_message_text(f"An error occurred while fetching your stats: {str(e)}",
-                                      reply_markup=InlineKeyboardMarkup(
-                                          [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data='main_menu')]]))
+        await query.edit_message_text(
+            f"Oops! We couldn't fetch your stats: {str(e)}",
+            reply_markup=InlineKeyboardMarkup(
+                [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data='main_menu')]])
+        )
     return MAIN_MENU
 
-
 async def wallet_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle wallet-related operations."""
     query = update.callback_query
     await query.answer()
     user = get_user(query.from_user.id)
     balance = contract.functions.balanceOf(user.wallet_address).call()
     keyboard = [
-        [InlineKeyboardButton("🔄 Refresh balance", callback_data='refresh_balance')],
-        [InlineKeyboardButton("💸 Transfer tokens", callback_data='transfer_tokens')],
-        [InlineKeyboardButton("⛽ Claim gas", callback_data='claim_gas')],
-        [InlineKeyboardButton("🔙 Back to main menu", callback_data='main_menu')]
+        [InlineKeyboardButton("🔄 Refresh Balance", callback_data='refresh_balance')],
+        [InlineKeyboardButton("💸 Transfer Tokens", callback_data='transfer_tokens')],
+        [InlineKeyboardButton("⛽ Get Free Gas", callback_data='claim_gas')],
+        [InlineKeyboardButton("🔙 Back to Main Menu", callback_data='main_menu')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text(text=f"👛 Wallet Menu\nCurrent balance: {balance} KBT tokens",
-                                  reply_markup=reply_markup)
+    await query.edit_message_text(
+        f"👛 Wallet Menu\n\n"
+        f"Current balance: {balance} KBT\n\n"
+        f"What would you like to do?",
+        reply_markup=reply_markup
+    )
     return WALLET
 
-
 async def transfer_tokens(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Guide user through token transfer process."""
     query = update.callback_query
     await query.answer()
     await query.edit_message_text(
-        "Please enter the recipient's address and the amount of tokens to transfer.\nFormat: address,amount")
+        "Let's transfer some tokens! 💸\n\n"
+        "Please enter the recipient's address and the amount to transfer.\n"
+        "Format: address, amount\n\n"
+        "Example: 0x1234...5678, 100"
+    )
     return WALLET
 
-
 async def process_transfer_tokens(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Process the token transfer request."""
     user = get_user(update.effective_user.id)
     try:
         recipient, amount = update.message.text.split(',')
@@ -606,34 +569,47 @@ async def process_transfer_tokens(update: Update, context: ContextTypes.DEFAULT_
         receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
 
         if receipt.status == 1:
-            await update.message.reply_text(f"Successfully transferred {amount} tokens to {recipient}.")
+            await update.message.reply_text(
+                f"✅ Transfer successful!\n\n"
+                f"You've sent {amount} KBT to {recipient.strip()}.\n"
+                f"Transaction hash: {tx_hash.hex()}"
+            )
         else:
-            await update.message.reply_text("Transaction failed. Please try again.")
+            await update.message.reply_text("Oops! Transfer failed. Please try again.")
     except Exception as e:
         await update.message.reply_text(f"An error occurred: {str(e)}")
-    return await wallet_handler(update, context)
-
+    finally:
+        return await wallet_handler(update, context)
 
 async def donate_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle donation process."""
     query = update.callback_query
     await query.answer()
     keyboard = [
-        [InlineKeyboardButton("💖 Donate to project", callback_data='donate_project')],
-        [InlineKeyboardButton("🔙 Back to main menu", callback_data='main_menu')]
+        [InlineKeyboardButton("💖 Donate to Project", callback_data='donate_project')],
+        [InlineKeyboardButton("🔙 Back to Main Menu", callback_data='main_menu')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text(text="🎁 Donate Menu:", reply_markup=reply_markup)
+    await query.edit_message_text(
+        "🎁 Donation Menu\n\n"
+        "Your support helps us continue our mission of responsible e-waste management.\n"
+        "Every token counts! What would you like to do?",
+        reply_markup=reply_markup
+    )
     return DONATE
-
 
 async def donate_project(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Guide user through the donation process."""
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text("Please enter the amount of tokens you want to donate to the project.")
+    await query.edit_message_text(
+        "You're amazing for wanting to donate! 💖\n\n"
+        "Please enter the amount of KBT tokens you'd like to donate to the project."
+    )
     return DONATE
 
-
 async def process_donate_project(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Process the donation request."""
     user = get_user(update.effective_user.id)
     try:
         amount = int(update.message.text)
@@ -648,13 +624,19 @@ async def process_donate_project(update: Update, context: ContextTypes.DEFAULT_T
         receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
 
         if receipt.status == 1:
-            await update.message.reply_text(f"Thank you for your donation of {amount} tokens to the project!")
+            await update.message.reply_text(
+                f"🎉 Thank you for your generous donation of {amount} KBT!\n\n"
+                f"Your support means the world to us and helps create a cleaner future. 🌍"
+            )
         else:
-            await update.message.reply_text("Transaction failed. Please try again.")
+            await update.message.reply_text("Oops! The donation didn't go through. Please try again.")
     except Exception as e:
         await update.message.reply_text(f"An error occurred: {str(e)}")
-    return await show_main_menu(update, context)
+    finally:
+        return await show_main_menu(update, context)
+
 async def terms_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle user's response to terms and conditions."""
     query = update.callback_query
     await query.answer()
 
@@ -663,23 +645,27 @@ async def terms_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not user:
             account = web3.eth.account.create()
             context.user_data['wallet'] = account.address
-            create_user(update.effective_user.id, account.address, account.key)
+            create_user(update.effective_user.id, account.address, account.key.hex())
 
         await query.edit_message_text(
-            f'🎉 Your wallet has been created.\n\n'
-            f'🔐 Wallet address: `{context.user_data["wallet"]}`\n\n'
-            f'You can claim some gas to get started, or register on the blockchain.',
+            f"🎉 Welcome aboard! Your wallet is ready.\n\n"
+            f"🔐 Wallet address: `{context.user_data['wallet']}`\n\n"
+            f"Let's get you started on your eco-friendly journey!",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("⛽ Claim Gas", callback_data='claim_gas')],
+                [InlineKeyboardButton("⛽ Get Free Gas", callback_data='claim_gas')],
                 [InlineKeyboardButton("🔑 Register on Blockchain", callback_data='register')]
             ])
         )
         return REGISTER
     else:
-        await query.edit_message_text('😔 We\'re sorry to see you go. You need to agree to use this system.')
+        await query.edit_message_text(
+            "We're sorry to see you go. 😔\n"
+            "If you change your mind about joining our eco-friendly community, feel free to start over!"
+        )
         return ConversationHandler.END
 
 async def set_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Set user's password."""
     password = update.message.text
     user_id = update.effective_user.id
 
@@ -691,49 +677,101 @@ async def set_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session.close()
 
         await update.message.reply_text(
-            '🎊 You have successfully set your password!\n\n'
-            '🔑 Remember to keep your password safe.\n'
-            '🌟 Enjoy using our E-Waste Recycling System!'
+            "🎊 Password set successfully!\n\n"
+            "🔐 Keep your password safe and secure.\n"
+            "🌟 You're all set to start your e-waste recycling journey!"
         )
         return await show_main_menu(update, context)
     except Exception as e:
         logger.error(f"Error in set_password: {e}")
-        await update.message.reply_text(f'❌ Failed to save your password: {str(e)}')
+        await update.message.reply_text(f"Oops! We couldn't save your password: {str(e)}")
         return ConversationHandler.END
+
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text('🛑 Operation cancelled. Returning to the main menu.')
+    """Cancel current operation and return to main menu."""
+    await update.message.reply_text('Operation cancelled. Returning to the main menu.')
     return await show_main_menu(update, context)
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle button presses."""
     query = update.callback_query
     await query.answer()
 
-    if query.data == 'earn':
-        return await earn_handler(update, context)
-    elif query.data == 'buyer':
-        return await buyer_handler(update, context)
-    elif query.data == 'wallet':
-        return await wallet_handler(update, context)
-    elif query.data == 'donate':
-        return await donate_handler(update, context)
-    elif query.data == 'recycle':
-        return await recycle_ewaste(update, context)
-    elif query.data == 'create_errand':
-        return await create_errand(update, context)
-    elif query.data == 'complete_errand':
-        return await complete_errand(update, context)
-    elif query.data == 'my_stats':
-        return await my_stats(update, context)
-    elif query.data == 'main_menu':
-        return await show_main_menu(update, context)
+    handlers = {
+        'earn': earn_handler,
+        'buyer': buyer_handler,
+        'wallet': wallet_handler,
+        'donate': donate_handler,
+        'recycle': recycle_ewaste,
+        'create_errand': create_errand,
+        'complete_errand': complete_errand,
+        'my_stats': my_stats,
+        'main_menu': show_main_menu,
+        'list_errands': list_errands,
+        'claim_gas': claim_gas,
+    }
+
+    handler = handlers.get(query.data)
+    if handler:
+        return await handler(update, context)
     else:
         await query.edit_message_text(text=f"Sorry, I didn't understand that command.")
         return MAIN_MENU
 
+async def handle_invalid_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle invalid user input."""
+    await update.message.reply_text(
+        "I didn't quite catch that. Let's head back to the main menu.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔙 Back to Main Menu", callback_data='main_menu')]
+        ])
+    )
+    return MAIN_MENU
 
-# Modify the main ConversationHandler to include error handling
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle errors and exceptions."""
+    logger.error(f"Error: {context.error}")
+    try:
+        if update.effective_message:
+            await update.effective_message.reply_text(
+                "Oops! Something went wrong. Let's go back to the main menu.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 Back to Main Menu", callback_data='main_menu')]
+                ])
+            )
+        return MAIN_MENU
+    except Exception as e:
+        logger.error(f"Error in error handler: {e}")
+
+async def claim_gas(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle gas claiming process."""
+    query = update.callback_query
+    await query.answer()
+
+    user = get_user(query.from_user.id)
+    result = gas_tracker.send_gas(user.wallet_address)
+
+    if result:
+        await query.edit_message_text(
+            f"🎉 Gas claimed successfully!\n\n"
+            f"Transaction hash: `{result}`\n\n"
+            f"You're now ready to register on the blockchain.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔑 Register on Blockchain", callback_data='register')]
+            ])
+        )
+    else:
+        await query.edit_message_text(
+            "Oops! We couldn't send you gas right now. Please try again later.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔄 Try Again", callback_data='claim_gas')],
+                [InlineKeyboardButton("🔙 Back to Main Menu", callback_data='main_menu')]
+            ])
+        )
+    return REGISTER
 
 def main():
+    """Set up and run the bot."""
     application = Application.builder().token(BOT_TOKEN).build()
 
     conv_handler = ConversationHandler(
@@ -743,14 +781,14 @@ def main():
             REGISTER: [CallbackQueryHandler(register_user)],
             PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_password)],
             MAIN_MENU: [CallbackQueryHandler(button)],
-            EARN: [CallbackQueryHandler(earn_handler)],
-            BUYER: [CallbackQueryHandler(buyer_handler)],
+            EARN: [CallbackQueryHandler(button)],
+            BUYER: [CallbackQueryHandler(button)],
             WALLET: [
-                CallbackQueryHandler(wallet_handler),
+                CallbackQueryHandler(button),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, process_transfer_tokens)
             ],
             DONATE: [
-                CallbackQueryHandler(donate_handler),
+                CallbackQueryHandler(button),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, process_donate_project)
             ],
             RECYCLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_recycle)],
@@ -762,8 +800,9 @@ def main():
         },
         fallbacks=[
             CommandHandler('cancel', cancel),
-            CommandHandler('menu', main_menu_command),
-            MessageHandler(filters.TEXT & ~filters.COMMAND, handle_invalid_input)
+            CommandHandler('menu', show_main_menu),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, handle_invalid_input),
+            CallbackQueryHandler(button),
         ],
     )
 
@@ -771,30 +810,6 @@ def main():
     application.add_error_handler(error_handler)
 
     application.run_polling()
-# Add a new function to handle invalid input
-async def handle_invalid_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "I'm sorry, I didn't understand that. Let's go back to the main menu.",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔙 Back to Main Menu", callback_data='main_menu')]
-        ])
-    )
-    return MAIN_MENU
-
-# Add a new function to handle errors
-async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.error(f"Error: {context.error}")
-    try:
-        if update.effective_message:
-            await update.effective_message.reply_text(
-                "An error occurred. Let's go back to the main menu.",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔙 Back to Main Menu", callback_data='main_menu')]
-                ])
-            )
-        return MAIN_MENU
-    except Exception as e:
-        logger.error(f"Error in error handler: {e}")
 
 if __name__ == '__main__':
     main()

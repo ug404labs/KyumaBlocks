@@ -9,7 +9,7 @@ The E-Waste Recycling Telegram DApp is a blockchain-based solution designed to i
 ## Our Team
 
 - **Nessa**: Our hard-working idea generator and project visionary.
-- **Oliseg Hegnesis**: Full-stack developer bringing our ideas to life.
+- **Oliseg Gegnesis**: Full-stack developer bringing our ideas to life.
 - **Zuka Robinah**: Smart contract developer ensuring our blockchain integration is secure and efficient.
 
 Together, we're committed to making e-waste recycling accessible, rewarding, and impactful.
