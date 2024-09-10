@@ -581,6 +581,32 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text('🛑 Operation cancelled. Returning to the main menu.')
     return await show_main_menu(update, context)
 
+async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == 'earn':
+        return await earn_handler(update, context)
+    elif query.data == 'buyer':
+        return await buyer_handler(update, context)
+    elif query.data == 'wallet':
+        return await wallet_handler(update, context)
+    elif query.data == 'donate':
+        return await donate_handler(update, context)
+    elif query.data == 'recycle':
+        return await recycle_ewaste(update, context)
+    elif query.data == 'create_errand':
+        return await create_errand(update, context)
+    elif query.data == 'complete_errand':
+        return await complete_errand(update, context)
+    elif query.data == 'my_stats':
+        return await my_stats(update, context)
+    elif query.data == 'main_menu':
+        return await show_main_menu(update, context)
+    else:
+        await query.edit_message_text(text=f"Sorry, I didn't understand that command.")
+        return MAIN_MENU
+
 
 def main():
     application = Application.builder().token(BOT_TOKEN).build()
