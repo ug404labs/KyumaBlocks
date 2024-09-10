@@ -294,39 +294,52 @@ async def complete_errand(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return COMPLETE_ERRAND
 
 
-async def process_create_errand(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def complete_errand(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text(
+        "Please enter the ID of the errand you want to complete.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔙 Back to Earn Menu", callback_data='earn')]
+        ])
+    )
+    return COMPLETE_ERRAND
+
+async def process_complete_errand(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = get_user(update.effective_user.id)
     try:
-        description, reward = update.message.text.split(',')
-        reward = int(reward.strip())
+        errand_id = int(update.message.text)
 
-        tx = contract.functions.createErrand(description, reward).build_transaction({
+        # Check if the errand exists and is not completed
+        errand = contract.functions.errands(errand_id).call()
+        if not errand[0]:  # Assuming the first element indicates if the errand exists
+            raise ValueError("Errand does not exist")
+        if errand[4]:  # Assuming the fifth element indicates if the errand is completed
+            raise ValueError("Errand has already been completed")
+
+        tx = contract.functions.completeErrand(errand_id).build_transaction({
             'from': user.wallet_address,
             'nonce': web3.eth.get_transaction_count(user.wallet_address),
+            'gas': 200000,  # Adjust the gas limit as needed
+            'gasPrice': web3.eth.gas_price
         })
         signed_tx = web3.eth.account.sign_transaction(tx, user.private_key)
         tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
         receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
 
         if receipt.status == 1:
-            # Get the errand ID from the event logs
-            errand_created_event = contract.events.ErrandCreated().process_receipt(receipt)
-            if errand_created_event:
-                errand_id = errand_created_event[0]['args']['id']
-                await update.message.reply_text(
-                    f"Successfully created an errand!\n"
-                    f"Errand ID: {errand_id}\n"
-                    f"Reward: {reward} tokens"
-                )
-            else:
-                await update.message.reply_text(
-                    f"Errand created successfully, but couldn't retrieve the ID.\n"
-                    f"Reward: {reward} tokens"
-                )
+            reward = errand[3]  # Assuming the fourth element is the reward amount
+            await update.message.reply_text(
+                f"Successfully completed errand {errand_id}.\n"
+                f"You have earned {reward} tokens!"
+            )
         else:
             await update.message.reply_text("Transaction failed. Please try again.")
+    except ValueError as ve:
+        await update.message.reply_text(str(ve))
     except Exception as e:
         await update.message.reply_text(f"An error occurred: {str(e)}")
+
     return await show_main_menu(update, context)
 
 
