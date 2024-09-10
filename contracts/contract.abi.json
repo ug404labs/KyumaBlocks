@@ -1,0 +1,905 @@
+[
+  {
+    "type": "constructor",
+    "inputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "addDisposalEvent",
+    "inputs": [
+      {
+        "name": "_imeiNumber",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_disposalMethod",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "_disposalDate",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "_disposalLocation",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "addLifecycleEvent",
+    "inputs": [
+      {
+        "name": "_imeiNumber",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_eventDescription",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "addressToTelegramId",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "createNewDevice",
+    "inputs": [
+      {
+        "name": "_imeiNumber",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_phoneName",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "_manufacturer",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "_manufactureDate",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_expectedLifecycle",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_isBatteryReplaceable",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
+        "name": "_is5GCapable",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
+        "name": "_releaseDate",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_os",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "_chipset",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "_phoneMemory",
+        "type": "uint16",
+        "internalType": "uint16"
+      },
+      {
+        "name": "_batteryType",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "_condition",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "_additionalExpectedLifecycle",
+        "type": "uint8",
+        "internalType": "uint8"
+      },
+      {
+        "name": "_achievedLifecycle",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_weight",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_deviceType",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "deviceStatuses",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "enum DeviceTrackingSystem.DeviceStatus"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getDisposalDetails",
+    "inputs": [
+      {
+        "name": "_imeiNumber",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getLifecycleEvent",
+    "inputs": [
+      {
+        "name": "_imeiNumber",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "index",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "eventDescription",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "timestamp",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getLifecycleEventsCount",
+    "inputs": [
+      {
+        "name": "_imeiNumber",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getPassportByIMEI",
+    "inputs": [
+      {
+        "name": "_imeiNumber",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct DeviceTrackingSystem.EWastePassport",
+        "components": [
+          {
+            "name": "phoneName",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "manufacturer",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "imeiNumber",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "manufactureDate",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "expectedLifecycle",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "isBatteryReplaceable",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "components",
+            "type": "tuple[]",
+            "internalType": "struct DeviceTrackingSystem.Component[]",
+            "components": [
+              {
+                "name": "componentName",
+                "type": "string",
+                "internalType": "string"
+              },
+              {
+                "name": "material",
+                "type": "string",
+                "internalType": "string"
+              }
+            ]
+          },
+          {
+            "name": "lifecycleEvents",
+            "type": "tuple[]",
+            "internalType": "struct DeviceTrackingSystem.LifecycleEvent[]",
+            "components": [
+              {
+                "name": "eventDescription",
+                "type": "string",
+                "internalType": "string"
+              },
+              {
+                "name": "timestamp",
+                "type": "uint256",
+                "internalType": "uint256"
+              }
+            ]
+          },
+          {
+            "name": "disposalEvent",
+            "type": "tuple",
+            "internalType": "struct DeviceTrackingSystem.DisposalEvent",
+            "components": [
+              {
+                "name": "disposalMethod",
+                "type": "string",
+                "internalType": "string"
+              },
+              {
+                "name": "disposalDate",
+                "type": "string",
+                "internalType": "string"
+              },
+              {
+                "name": "location",
+                "type": "string",
+                "internalType": "string"
+              },
+              {
+                "name": "disposedBy",
+                "type": "string",
+                "internalType": "string"
+              }
+            ]
+          },
+          {
+            "name": "additionalDetails",
+            "type": "tuple",
+            "internalType": "struct DeviceTrackingSystem.AdditionalDetails",
+            "components": [
+              {
+                "name": "is5GCapable",
+                "type": "bool",
+                "internalType": "bool"
+              },
+              {
+                "name": "releaseDate",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "os",
+                "type": "string",
+                "internalType": "string"
+              },
+              {
+                "name": "chipset",
+                "type": "string",
+                "internalType": "string"
+              },
+              {
+                "name": "phoneMemory",
+                "type": "uint16",
+                "internalType": "uint16"
+              },
+              {
+                "name": "batteryType",
+                "type": "string",
+                "internalType": "string"
+              },
+              {
+                "name": "condition",
+                "type": "string",
+                "internalType": "string"
+              },
+              {
+                "name": "expectedLifecycle",
+                "type": "uint8",
+                "internalType": "uint8"
+              },
+              {
+                "name": "achievedLifecycle",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "weight",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "deviceType",
+                "type": "string",
+                "internalType": "string"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getUserType",
+    "inputs": [
+      {
+        "name": "_telegramId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "enum DeviceTrackingSystem.UserType"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "isUserAuthorized",
+    "inputs": [
+      {
+        "name": "_userAddress",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "isUserRegistered",
+    "inputs": [
+      {
+        "name": "_telegramId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "owner",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "passports",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "phoneName",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "manufacturer",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "imeiNumber",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "manufactureDate",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "expectedLifecycle",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "isBatteryReplaceable",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
+        "name": "disposalEvent",
+        "type": "tuple",
+        "internalType": "struct DeviceTrackingSystem.DisposalEvent",
+        "components": [
+          {
+            "name": "disposalMethod",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "disposalDate",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "location",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "disposedBy",
+            "type": "string",
+            "internalType": "string"
+          }
+        ]
+      },
+      {
+        "name": "additionalDetails",
+        "type": "tuple",
+        "internalType": "struct DeviceTrackingSystem.AdditionalDetails",
+        "components": [
+          {
+            "name": "is5GCapable",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "releaseDate",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "os",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "chipset",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "phoneMemory",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "batteryType",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "condition",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "expectedLifecycle",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "achievedLifecycle",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "weight",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "deviceType",
+            "type": "string",
+            "internalType": "string"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "registerDevice",
+    "inputs": [
+      {
+        "name": "_imeiNumber",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "registerUser",
+    "inputs": [
+      {
+        "name": "_telegramId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_userType",
+        "type": "uint8",
+        "internalType": "enum DeviceTrackingSystem.UserType"
+      },
+      {
+        "name": "_walletAddress",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "registeredDevices",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "setDeviceStatus",
+    "inputs": [
+      {
+        "name": "_imeiNumber",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_status",
+        "type": "uint8",
+        "internalType": "enum DeviceTrackingSystem.DeviceStatus"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "updateUserType",
+    "inputs": [
+      {
+        "name": "_telegramId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "_newType",
+        "type": "uint8",
+        "internalType": "enum DeviceTrackingSystem.UserType"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "users",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "telegramId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "userType",
+        "type": "uint8",
+        "internalType": "enum DeviceTrackingSystem.UserType"
+      },
+      {
+        "name": "isRegistered",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
+        "name": "walletAddress",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "event",
+    "name": "DeviceCreated",
+    "inputs": [
+      {
+        "name": "deviceName",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      },
+      {
+        "name": "deviceType",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      },
+      {
+        "name": "manufacturer",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      },
+      {
+        "name": "imeiNumber",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "manufactureDate",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "expectedLifecycle",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "isBatteryReplaceable",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "DeviceRegistered",
+    "inputs": [
+      {
+        "name": "imeiNumber",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "DisposalEventAdded",
+    "inputs": [
+      {
+        "name": "imeiNumber",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "disposalMethod",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      },
+      {
+        "name": "disposalDate",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      },
+      {
+        "name": "location",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "LifecycleEventAdded",
+    "inputs": [
+      {
+        "name": "imeiNumber",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "eventDescription",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "UserRegistered",
+    "inputs": [
+      {
+        "name": "telegramId",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "userType",
+        "type": "uint8",
+        "indexed": false,
+        "internalType": "enum DeviceTrackingSystem.UserType"
+      },
+      {
+        "name": "walletAddress",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  }
+]
