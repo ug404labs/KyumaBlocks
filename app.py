@@ -210,6 +210,7 @@ async def main_menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await show_main_menu(update, context)
 
 
+# Modify the earn_handler function to include the List Errands button
 async def earn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -217,13 +218,13 @@ async def earn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("♻️ Recycle E-Waste", callback_data='recycle')],
         [InlineKeyboardButton("📋 Create Errand", callback_data='create_errand')],
+        [InlineKeyboardButton("📜 List Errands", callback_data='list_errands')],
         [InlineKeyboardButton("✅ Complete Errand", callback_data='complete_errand')],
         [InlineKeyboardButton("🔙 Back to Main Menu", callback_data='main_menu')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text("💰 Earn Menu - Choose an option:", reply_markup=reply_markup)
     return EARN
-
 
 async def buyer_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -279,6 +280,20 @@ async def create_errand(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return CREATE_ERRAND
 
 
+# Modify the create_errand function
+async def create_errand(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text("Please enter the An Ewaste description and reward amount.\nFormat: description,reward")
+    return CREATE_ERRAND
+
+async def complete_errand(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text("Please enter the ID of the errand you want to complete.")
+    return COMPLETE_ERRAND
+
+
 async def process_create_errand(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = get_user(update.effective_user.id)
     try:
@@ -290,11 +305,24 @@ async def process_create_errand(update: Update, context: ContextTypes.DEFAULT_TY
             'nonce': web3.eth.get_transaction_count(user.wallet_address),
         })
         signed_tx = web3.eth.account.sign_transaction(tx, user.private_key)
-        tx_hash = web3.eth.send_raw_transaction(signed_tx.raw_transaction)
+        tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
         receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
 
         if receipt.status == 1:
-            await update.message.reply_text(f"Successfully created an errand with a reward of {reward} tokens.")
+            # Get the errand ID from the event logs
+            errand_created_event = contract.events.ErrandCreated().process_receipt(receipt)
+            if errand_created_event:
+                errand_id = errand_created_event[0]['args']['id']
+                await update.message.reply_text(
+                    f"Successfully created an errand!\n"
+                    f"Errand ID: {errand_id}\n"
+                    f"Reward: {reward} tokens"
+                )
+            else:
+                await update.message.reply_text(
+                    f"Errand created successfully, but couldn't retrieve the ID.\n"
+                    f"Reward: {reward} tokens"
+                )
         else:
             await update.message.reply_text("Transaction failed. Please try again.")
     except Exception as e:
@@ -302,33 +330,52 @@ async def process_create_errand(update: Update, context: ContextTypes.DEFAULT_TY
     return await show_main_menu(update, context)
 
 
-async def complete_errand(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# Add a new function to list available errands
+async def list_errands(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text("Please enter the ID of the errand you want to complete.")
-    return COMPLETE_ERRAND
 
-
-async def process_complete_errand(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = get_user(update.effective_user.id)
     try:
-        errand_id = int(update.message.text)
+        # Get the total number of errands
+        total_errands = contract.functions.getErrandCount().call()
+        available_errands = []
 
-        tx = contract.functions.completeErrand(errand_id).build_transaction({
-            'from': user.wallet_address,
-            'nonce': web3.eth.get_transaction_count(user.wallet_address),
-        })
-        signed_tx = web3.eth.account.sign_transaction(tx, user.private_key)
-        tx_hash = web3.eth.send_raw_transaction(signed_tx.raw_transaction)
-        receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
+        # Iterate through errands and check if they're available
+        for i in range(total_errands):
+            errand = contract.functions.errands(i).call()
+            if not errand[4]:  # If not completed
+                available_errands.append({
+                    'id': i,
+                    'description': errand[2],
+                    'reward': errand[3]
+                })
 
-        if receipt.status == 1:
-            await update.message.reply_text(f"Successfully completed errand {errand_id}.")
+        if available_errands:
+            errand_list = "Available Errands:\n\n"
+            for errand in available_errands:
+                errand_list += f"ID: {errand['id']}\nDescription: {errand['description']}\nReward: {errand['reward']} tokens\n\n"
+
+            await query.edit_message_text(
+                errand_list,
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 Back to Earn Menu", callback_data='earn')]
+                ])
+            )
         else:
-            await update.message.reply_text("Transaction failed. Please try again.")
+            await query.edit_message_text(
+                "No available errands at the moment.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 Back to Earn Menu", callback_data='earn')]
+                ])
+            )
     except Exception as e:
-        await update.message.reply_text(f"An error occurred: {str(e)}")
-    return await show_main_menu(update, context)
+        await query.edit_message_text(
+            f"An error occurred while fetching errands: {str(e)}",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 Back to Earn Menu", callback_data='earn')]
+            ])
+        )
+    return EARN
 
 
 async def register_buyer(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -615,6 +662,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return MAIN_MENU
 
 
+# Modify the main ConversationHandler to include error handling
 def main():
     application = Application.builder().token(BOT_TOKEN).build()
 
@@ -642,14 +690,42 @@ def main():
             PROCESS_EWASTE: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_process_ewaste)],
             PAY_FOR_EWASTE: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_pay_for_ewaste)],
         },
-        fallbacks=[CommandHandler('cancel', cancel)],
+        fallbacks=[
+            CommandHandler('cancel', cancel),
+            CommandHandler('menu', main_menu_command),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, handle_invalid_input)
+        ],
     )
 
     application.add_handler(conv_handler)
-    application.add_handler(CommandHandler('menu', main_menu_command))
+    application.add_error_handler(error_handler)
 
     application.run_polling()
 
+# Add a new function to handle invalid input
+async def handle_invalid_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "I'm sorry, I didn't understand that. Let's go back to the main menu.",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔙 Back to Main Menu", callback_data='main_menu')]
+        ])
+    )
+    return MAIN_MENU
+
+# Add a new function to handle errors
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.error(f"Error: {context.error}")
+    try:
+        if update.effective_message:
+            await update.effective_message.reply_text(
+                "An error occurred. Let's go back to the main menu.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 Back to Main Menu", callback_data='main_menu')]
+                ])
+            )
+        return MAIN_MENU
+    except Exception as e:
+        logger.error(f"Error in error handler: {e}")
 
 if __name__ == '__main__':
     main()
