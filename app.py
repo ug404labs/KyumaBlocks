@@ -10,6 +10,8 @@ from sqlalchemy import create_engine, Column, Integer, String, Float
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
+from utils.gas_manager import GasTracker
+
 # Set up logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -19,6 +21,9 @@ load_dotenv()
 BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 CONTRACT_ADDRESS = os.getenv('CONTRACT_ADDRESS')
 CHAINSTACK_NODE_URL = os.getenv('CHAINSTACK_NODE_URL')
+
+FAUCET_ADDRESS = os.getenv('FAUCET_ADDRESS')
+FAUCET_PRIVATE_KEY = os.getenv('FAUCET_PRIVATE_KEY')
 
 # Use SQLite
 DB_URL = "sqlite:///users.db"
@@ -57,8 +62,12 @@ engine = create_engine(DB_URL)
 Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 
+
+# Initialize GasTracker
+gas_tracker = GasTracker(CHAINSTACK_NODE_URL, FAUCET_ADDRESS, FAUCET_PRIVATE_KEY)
+
 # Bot states
-TERMS, PASSWORD, MAIN_MENU, EARN, BUYER, WALLET, DONATE, REGISTER = range(8)
+TERMS, PASSWORD, MAIN_MENU, EARN, BUYER, WALLET, DONATE, REGISTER, CLAIM_GAS = range(9)
 
 # Helper functions
 def get_user(telegram_id):
@@ -75,35 +84,35 @@ def create_user(telegram_id, wallet_address, private_key):
     session.close()
     return user
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = get_user(update.effective_user.id)
-    if user:
-        token_balance = contract.functions.balanceOf(user.wallet_address).call()
-        eth_balance = web3.eth.get_balance(user.wallet_address)
-        await update.message.reply_text(
-            f'Welcome back! You already have a wallet: `{user.wallet_address}`.\n\n'
-            f'Your Kyuma token balance is: `{token_balance}`\n'
-            f'Your ETH balance is: `{eth_balance}`\n\n'
-            f'Please register on the blockchain to continue.',
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔑 Register on Blockchain", callback_data='register')]
-            ])
-        )
-        return REGISTER
-
-    await update.message.reply_text(
-        '👋 Welcome to the E-Waste Recycling Bot! ♻️📱\n\n'
-        'Before we begin, please read and agree to our terms and conditions:\n\n'
-        '1. Your data will be stored securely.\n'
-        '2. You are responsible for your account activities.\n'
-        '3. We respect your privacy and will not share your information.\n\n'
-        'Do you agree to these terms?',
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("✅ I Agree", callback_data='agree')],
-            [InlineKeyboardButton("❌ I Disagree", callback_data='disagree')]
-        ])
-    )
-    return TERMS
+# async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+#     user = get_user(update.effective_user.id)
+#     if user:
+#         token_balance = contract.functions.balanceOf(user.wallet_address).call()
+#         eth_balance = web3.eth.get_balance(user.wallet_address)
+#         await update.message.reply_text(
+#             f'Welcome back! You already have a wallet: `{user.wallet_address}`.\n\n'
+#             f'Your Kyuma token balance is: `{token_balance}`\n'
+#             f'Your ETH balance is: `{eth_balance}`\n\n'
+#             f'Please register on the blockchain to continue.',
+#             reply_markup=InlineKeyboardMarkup([
+#                 [InlineKeyboardButton("🔑 Register on Blockchain", callback_data='register')]
+#             ])
+#         )
+#         return REGISTER
+#
+#     await update.message.reply_text(
+#         '👋 Welcome to the E-Waste Recycling Bot! ♻️📱\n\n'
+#         'Before we begin, please read and agree to our terms and conditions:\n\n'
+#         '1. Your data will be stored securely.\n'
+#         '2. You are responsible for your account activities.\n'
+#         '3. We respect your privacy and will not share your information.\n\n'
+#         'Do you agree to these terms?',
+#         reply_markup=InlineKeyboardMarkup([
+#             [InlineKeyboardButton("✅ I Agree", callback_data='agree')],
+#             [InlineKeyboardButton("❌ I Disagree", callback_data='disagree')]
+#         ])
+#     )
+#     return TERMS
 
 async def terms_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
