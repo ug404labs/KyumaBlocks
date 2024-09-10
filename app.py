@@ -125,6 +125,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return TERMS
 
+
 async def register_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -133,28 +134,34 @@ async def register_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     wallet_address = user.wallet_address
 
     try:
-        # Get the nonce and chain ID for the transaction
+        # Estimate gas for the registration
+        gas_estimate = gas_tracker.estimate_gas(wallet_address, CONTRACT_ADDRESS,
+                                                contract.functions.registerUser().build_transaction()['data'])
+
+        if gas_estimate is None:
+            raise Exception("Failed to estimate gas for registration")
+
+        # Ensure sufficient gas
+        if not gas_tracker.ensure_sufficient_gas(wallet_address, gas_estimate):
+            await query.edit_message_text("Insufficient funds for registration. Please try again later.")
+            return REGISTER
+
+        # Proceed with registration
         nonce = web3.eth.get_transaction_count(wallet_address)
         chain_id = web3.eth.chain_id
 
-        # Build the transaction for registering the user
         transaction = contract.functions.registerUser().build_transaction({
             'chainId': chain_id,
-            'gas': 2000000,  # Adjust gas as per your contract requirements
+            'gas': int(gas_estimate * 1.2),  # Add 20% buffer
             'gasPrice': web3.eth.gas_price,
             'nonce': nonce,
         })
 
-        # Sign the transaction with the user's private key
         signed_txn = web3.eth.account.sign_transaction(transaction, private_key=user.private_key)
-
-        # Send the raw transaction
         tx_hash = web3.eth.send_raw_transaction(signed_txn.raw_transaction)
-
-        # Wait for the transaction receipt
         tx_receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
+        print(tx_receipt)
 
-        # Check if the transaction was successful
         if tx_receipt['status'] == 1:
             await query.edit_message_text(
                 f'🎉 You have been registered successfully on the blockchain!\n\n'
@@ -165,15 +172,15 @@ async def register_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
             raise Exception("Transaction failed")
 
     except Exception as e:
-        logger.error(f"Error in register_user: {e}")
+        logging.error(f"Error in register_user: {str(e)}")
         await query.edit_message_text(
             f'❌ Registration failed: {str(e)}\n\n'
-            f'Please make sure your wallet is funded with enough gas and try again.',
+            f'Please try again later.',
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔑 Try Registering Again", callback_data='register')]
+                [InlineKeyboardButton("🔙 Back to Main Menu", callback_data='main_menu')]
             ])
         )
-        return REGISTER
+        return MAIN_MENU
 async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("💰 Earn", callback_data='earn'),
