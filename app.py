@@ -540,7 +540,7 @@ async def terms_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not user:
             account = web3.eth.account.create()
             context.user_data['wallet'] = account.address
-            create_user(update.effective_user.id, account.address, account.privateKey.hex())
+            create_user(update.effective_user.id, account.address, account.key)
 
         await query.edit_message_text(
             f'🎉 Your wallet has been created.\n\n'
