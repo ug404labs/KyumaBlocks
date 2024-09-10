@@ -39,7 +39,7 @@ pydantic_core==2.23.3
 python-dotenv==1.0.1
 python-telegram-bot==21.5
 pyunormalize==15.1.0
-pywin32==306
+#pywin32==306
 regex==2024.7.24
 requests==2.32.3
 rlp==4.0.1
