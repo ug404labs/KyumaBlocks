@@ -1,279 +1,147 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.10;
+pragma solidity ^0.8.0;
 
-contract DeviceTrackingSystem {
-    address public owner;
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/Counters.sol";
 
-    constructor() {
-        owner = msg.sender;
-    }
-
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Only the contract owner can call this function");
-        _;
-    }
-
-    // User Management
-    enum UserType {
-        Manufacturer,
-        Distributor,
-        Retailer,
-        Consumer,
-        Refurbisher,
-        Recycler,
-        Environment,
-        Government
-    }
+contract KyumaBlocks is ERC20, Ownable {
+    using Counters for Counters.Counter;
 
     struct User {
-        uint256 telegramId;
-        UserType userType;
         bool isRegistered;
-        address walletAddress;
+        uint256 reputation;
+        uint256 recycledAmount;
     }
 
-    mapping(uint256 => User) public users; // Telegram ID to User
-    mapping(address => uint256) public addressToTelegramId; // Ethereum address to Telegram ID
-
-    event UserRegistered(uint256 telegramId, UserType userType, address walletAddress);
-
-    // Device Management
-    enum DeviceStatus {
-        InRepair,
-        Active,
-        Repaired,
-        ToDispose,
-        Disposable
-    }
-
-    struct Component {
-        string componentName;
-        string material;
-    }
-
-    struct LifecycleEvent {
-        string eventDescription;
-        uint256 timestamp;
-    }
-
-    struct DisposalEvent {
-        string disposalMethod;
-        string disposalDate;
+    struct Buyer {
+        string name;
+        bool isVerified;
         string location;
-        string disposedBy;
+        string additionalInfo;
     }
 
-    struct AdditionalDetails {
-        bool is5GCapable;
-        uint256 releaseDate;
-        string os;
-        string chipset;
-        uint16 phoneMemory;
-        string batteryType;
-        string condition;
-        uint8 expectedLifecycle;
-        uint256 achievedLifecycle;
+    struct EWaste {
+        address recycler;
+        string description;
         uint256 weight;
-        string deviceType;
+        bool isCollected;
+        bool isProcessed;
     }
 
-    struct EWastePassport {
-        string phoneName;
-        string manufacturer;
-        uint256 imeiNumber;
-        uint256 manufactureDate;
-        uint256 expectedLifecycle;
-        bool isBatteryReplaceable;
-        Component[] components;
-        LifecycleEvent[] lifecycleEvents;
-        DisposalEvent disposalEvent;
-        AdditionalDetails additionalDetails;
+    struct Errand {
+        address runner;
+        address creator;
+        string description;
+        uint256 reward;
+        bool isCompleted;
     }
 
-    mapping(uint256 => bool) public registeredDevices;
-    mapping(uint256 => EWastePassport) public passports;
-    mapping(uint256 => DeviceStatus) public deviceStatuses;
+    mapping(address => User) public users;
+    mapping(address => Buyer) public buyers;
 
-    event DeviceRegistered(uint256 imeiNumber);
-    event DeviceCreated(
-        string deviceName,
-        string deviceType,
-        string manufacturer,
-        uint256 imeiNumber,
-        uint256 manufactureDate,
-        uint256 expectedLifecycle,
-        bool isBatteryReplaceable
-    );
-    event LifecycleEventAdded(uint256 imeiNumber, string eventDescription);
-    event DisposalEventAdded(uint256 imeiNumber, string disposalMethod, string disposalDate, string location);
+    Counters.Counter private _eWasteIdCounter;
+    mapping(uint256 => EWaste) public eWastes;
 
-    // User Registration Functions
-    function registerUser(uint256 _telegramId, UserType _userType, address _walletAddress) public {
-        require(!users[_telegramId].isRegistered, "User already registered!");
-        users[_telegramId] = User(_telegramId, _userType, true, _walletAddress);
-        addressToTelegramId[_walletAddress] = _telegramId;
-        emit UserRegistered(_telegramId, _userType, _walletAddress);
+    Counters.Counter private _errandIdCounter;
+    mapping(uint256 => Errand) public errands;
+
+    event UserRegistered(address indexed user);
+    event BuyerRegistered(address indexed buyer, string name);
+    event EWasteRecycled(uint256 indexed id, address indexed recycler, uint256 weight);
+    event ErrandCreated(uint256 indexed id, address indexed creator, uint256 reward);
+    event ErrandCompleted(uint256 indexed id, address indexed runner);
+
+    constructor() ERC20("Kyuma Blocks Token", "KBT") {
+        _mint(msg.sender, 1000000 * 10**decimals());
     }
 
-    function isUserRegistered(uint256 _telegramId) public view returns (bool) {
-        return users[_telegramId].isRegistered;
+    function registerUser() external {
+        require(!users[msg.sender].isRegistered, "User already registered");
+        users[msg.sender] = User(true, 0, 0);
+        emit UserRegistered(msg.sender);
     }
 
-    function getUserType(uint256 _telegramId) public view returns (UserType) {
-        require(users[_telegramId].isRegistered, "User not registered!");
-        return users[_telegramId].userType;
+    function registerBuyer(string memory name, string memory location, string memory additionalInfo) external {
+        require(!buyers[msg.sender].isVerified, "Buyer already registered");
+        buyers[msg.sender] = Buyer(name, true, location, additionalInfo);
+        emit BuyerRegistered(msg.sender, name);
     }
 
-    function updateUserType(uint256 _telegramId, UserType _newType) public onlyOwner {
-        require(users[_telegramId].isRegistered, "User not registered!");
-        users[_telegramId].userType = _newType;
+    function recycleEWaste(string memory description, uint256 weight) external {
+        require(users[msg.sender].isRegistered, "User not registered");
+        uint256 eWasteId = _eWasteIdCounter.current();
+        eWastes[eWasteId] = EWaste(msg.sender, description, weight, false, false);
+        _eWasteIdCounter.increment();
+
+        users[msg.sender].recycledAmount += weight;
+        users[msg.sender].reputation += 1;
+
+        uint256 reward = weight * 10; // 10 tokens per unit of weight
+        _mint(msg.sender, reward);
+
+        emit EWasteRecycled(eWasteId, msg.sender, weight);
     }
 
-    function isUserAuthorized(address _userAddress) public view returns (bool) {
-        uint256 telegramId = addressToTelegramId[_userAddress];
-        require(users[telegramId].isRegistered, "User not registered!");
-        UserType userType = users[telegramId].userType;
-        return userType == UserType.Manufacturer || userType == UserType.Distributor || userType == UserType.Retailer
-            || userType == UserType.Consumer || userType == UserType.Refurbisher || userType == UserType.Recycler;
+    function createErrand(string memory description, uint256 reward) external {
+        require(users[msg.sender].isRegistered, "User not registered");
+        require(balanceOf(msg.sender) >= reward, "Insufficient balance for reward");
+
+        uint256 errandId = _errandIdCounter.current();
+        errands[errandId] = Errand(address(0), msg.sender, description, reward, false);
+        _errandIdCounter.increment();
+
+        _transfer(msg.sender, address(this), reward);
+
+        emit ErrandCreated(errandId, msg.sender, reward);
     }
 
-    // Device Functions
-    function registerDevice(uint256 _imeiNumber) public {
-        require(isUserAuthorized(msg.sender), "User not authorized!");
-        require(!registeredDevices[_imeiNumber], "Device already registered!");
-        registeredDevices[_imeiNumber] = true;
-        emit DeviceRegistered(_imeiNumber);
+    function completeErrand(uint256 errandId) external {
+        require(users[msg.sender].isRegistered, "User not registered");
+        Errand storage errand = errands[errandId];
+        require(!errand.isCompleted, "Errand already completed");
+        require(errand.runner == address(0), "Errand already assigned");
+
+        errand.runner = msg.sender;
+        errand.isCompleted = true;
+
+        _transfer(address(this), msg.sender, errand.reward);
+        users[msg.sender].reputation += 1;
+
+        emit ErrandCompleted(errandId, msg.sender);
     }
 
-    function createNewDevice(
-        uint256 _imeiNumber,
-        string memory _phoneName,
-        string memory _manufacturer,
-        uint256 _manufactureDate,
-        uint256 _expectedLifecycle,
-        bool _isBatteryReplaceable,
-        bool _is5GCapable,
-        uint256 _releaseDate,
-        string memory _os,
-        string memory _chipset,
-        uint16 _phoneMemory,
-        string memory _batteryType,
-        string memory _condition,
-        uint8 _additionalExpectedLifecycle,
-        uint256 _achievedLifecycle,
-        uint256 _weight,
-        string memory _deviceType
-    ) public {
-        require(isUserAuthorized(msg.sender), "User not authorized!");
-        require(registeredDevices[_imeiNumber], "Device not registered!");
-
-        // Create the device passport
-        EWastePassport storage newPassport = passports[_imeiNumber];
-        newPassport.phoneName = _phoneName;
-        newPassport.manufacturer = _manufacturer;
-        newPassport.imeiNumber = _imeiNumber;
-        newPassport.manufactureDate = _manufactureDate;
-        newPassport.expectedLifecycle = _expectedLifecycle;
-        newPassport.isBatteryReplaceable = _isBatteryReplaceable;
-        newPassport.additionalDetails = AdditionalDetails({
-            is5GCapable: _is5GCapable,
-            releaseDate: _releaseDate,
-            os: _os,
-            chipset: _chipset,
-            phoneMemory: _phoneMemory,
-            batteryType: _batteryType,
-            condition: _condition,
-            expectedLifecycle: _additionalExpectedLifecycle,
-            achievedLifecycle: _achievedLifecycle,
-            weight: _weight,
-            deviceType: _deviceType
-        });
-
-        emit DeviceCreated(
-            _phoneName,
-            _deviceType,
-            _manufacturer,
-            _imeiNumber,
-            _manufactureDate,
-            _expectedLifecycle,
-            _isBatteryReplaceable
-        );
+    function verifyBuyer(address buyerAddress) external onlyOwner {
+        require(buyers[buyerAddress].isVerified == false, "Buyer already verified");
+        buyers[buyerAddress].isVerified = true;
     }
 
-    function setDeviceStatus(uint256 _imeiNumber, DeviceStatus _status) public {
-        require(isUserAuthorized(msg.sender), "User not authorized!");
-        require(registeredDevices[_imeiNumber], "Device not registered!");
-        deviceStatuses[_imeiNumber] = _status;
+    function processEWaste(uint256 eWasteId) external {
+        require(buyers[msg.sender].isVerified, "Not a verified buyer");
+        EWaste storage eWaste = eWastes[eWasteId];
+        require(!eWaste.isProcessed, "E-Waste already processed");
+
+        eWaste.isProcessed = true;
+        users[eWaste.recycler].reputation += 2;
     }
 
-    // Event Management Functions
-    function addLifecycleEvent(uint256 _imeiNumber, string memory _eventDescription) public {
-        require(isUserAuthorized(msg.sender), "User not authorized!");
-        require(registeredDevices[_imeiNumber], "Device not registered!");
+    function payForEWaste(address recycler, uint256 amount) external {
+        require(buyers[msg.sender].isVerified, "Not a verified buyer");
+        require(balanceOf(msg.sender) >= amount, "Insufficient balance");
 
-        LifecycleEvent memory newEvent =
-            LifecycleEvent({eventDescription: _eventDescription, timestamp: block.timestamp});
-        passports[_imeiNumber].lifecycleEvents.push(newEvent);
-        emit LifecycleEventAdded(_imeiNumber, _eventDescription);
+        _transfer(msg.sender, recycler, amount);
     }
 
-    function addDisposalEvent(
-        uint256 _imeiNumber,
-        string memory _disposalMethod,
-        string memory _disposalDate,
-        string memory _disposalLocation
-    ) public {
-        require(isUserAuthorized(msg.sender), "User not authorized!");
-        require(registeredDevices[_imeiNumber], "Device not registered!");
-
-        passports[_imeiNumber].disposalEvent = DisposalEvent({
-            disposalMethod: _disposalMethod,
-            disposalDate: _disposalDate,
-            location: _disposalLocation,
-            disposedBy: addressToString(msg.sender)
-        });
-
-        emit DisposalEventAdded(_imeiNumber, _disposalMethod, _disposalDate, _disposalLocation);
+    function getUserReputation(address user) external view returns (uint256) {
+        return users[user].reputation;
     }
 
-    function addressToString(address _address) private pure returns (string memory) {
-        bytes32 value = bytes32(uint256(uint160(_address)));
-        bytes memory alphabet = "0123456789abcdef";
-        bytes memory str = new bytes(42);
-        str[0] = "0";
-        str[1] = "x";
-        for (uint256 i = 0; i < 20; i++) {
-            str[2 + i * 2] = alphabet[uint8(value[i + 12] >> 4)];
-            str[3 + i * 2] = alphabet[uint8(value[i + 12] & 0x0f)];
-        }
-        return string(str);
+    function getUserRecycledAmount(address user) external view returns (uint256) {
+        return users[user].recycledAmount;
     }
 
-    // Getter Functions
-    function getLifecycleEventsCount(uint256 _imeiNumber) public view returns (uint256) {
-        return passports[_imeiNumber].lifecycleEvents.length;
-    }
-
-    function getLifecycleEvent(uint256 _imeiNumber, uint256 index)
-        public
-        view
-        returns (string memory eventDescription, uint256 timestamp)
-    {
-        require(index < passports[_imeiNumber].lifecycleEvents.length, "Index out of bounds");
-        LifecycleEvent memory lifecycleEvent = passports[_imeiNumber].lifecycleEvents[index];
-        return (lifecycleEvent.eventDescription, lifecycleEvent.timestamp);
-    }
-
-    function getDisposalDetails(uint256 _imeiNumber)
-        public
-        view
-        returns (string memory, string memory, string memory, string memory)
-    {
-        DisposalEvent memory disposal = passports[_imeiNumber].disposalEvent;
-        return (disposal.disposalMethod, disposal.disposalDate, disposal.location, disposal.disposedBy);
-    }
-
-    function getPassportByIMEI(uint256 _imeiNumber) public view returns (EWastePassport memory) {
-        return passports[_imeiNumber];
+    function getBuyerInfo(address buyer) external view returns (string memory, bool, string memory, string memory) {
+        Buyer memory buyerInfo = buyers[buyer];
+        return (buyerInfo.name, buyerInfo.isVerified, buyerInfo.location, buyerInfo.additionalInfo);
     }
 }

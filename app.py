@@ -16,22 +16,26 @@ logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
-provider_url = os.getenv('BASE_PROVIDER_URL')
-key = os.getenv('INFURA_API_KEY')
 BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 CONTRACT_ADDRESS = os.getenv('CONTRACT_ADDRESS')
+CHAINSTACK_NODE_URL = os.getenv('CHAINSTACK_NODE_URL')
 
 # Use SQLite
 DB_URL = "sqlite:///users.db"
 
-# Base setup
-w3 = Web3(Web3.HTTPProvider(f"{provider_url}{key}"))
+# Web3 setup
+web3 = Web3(Web3.HTTPProvider(CHAINSTACK_NODE_URL))
+if web3.is_connected():
+    logger.info("Connected to Ethereum network")
+else:
+    logger.error("Failed to connect to Ethereum network")
+    raise Exception("Failed to connect to Ethereum network")
 
 # Load contract ABI
 try:
     with open('contracts/contract.abi.json', 'r') as abi_file:
         contract_abi = json.load(abi_file)
-    contract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=contract_abi)
+    contract = web3.eth.contract(address=CONTRACT_ADDRESS, abi=contract_abi)
     logger.info(f'Contract loaded: {contract}')
 except Exception as e:
     logger.error(f"Error loading contract: {e}")
@@ -40,23 +44,21 @@ except Exception as e:
 # Database setup
 Base = declarative_base()
 
-
 class User(Base):
     __tablename__ = 'users'
     id = Column(Integer, primary_key=True)
     telegram_id = Column(String, unique=True)
     wallet_address = Column(String)
     balance = Column(Float, default=0.0)
-    password = Column(String)  # Added password field
-
+    password = Column(String)
+    private_key = Column(String)
 
 engine = create_engine(DB_URL)
 Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 
 # Bot states
-TERMS, PASSWORD, MAIN_MENU, EARN, BUYER, WALLET, DONATE = range(7)
-
+TERMS, PASSWORD, MAIN_MENU, EARN, BUYER, WALLET, DONATE, REGISTER = range(8)
 
 # Helper functions
 def get_user(telegram_id):
@@ -65,20 +67,29 @@ def get_user(telegram_id):
     session.close()
     return user
 
-
-def create_user(telegram_id, wallet_address, password):
+def create_user(telegram_id, wallet_address, private_key):
     session = Session()
-    user = User(telegram_id=str(telegram_id), wallet_address=wallet_address, password=password)
+    user = User(telegram_id=str(telegram_id), wallet_address=wallet_address, private_key=private_key)
     session.add(user)
     session.commit()
     session.close()
     return user
 
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = get_user(update.effective_user.id)
     if user:
-        return await show_main_menu(update, context)
+        token_balance = contract.functions.balanceOf(user.wallet_address).call()
+        eth_balance = web3.eth.get_balance(user.wallet_address)
+        await update.message.reply_text(
+            f'Welcome back! You already have a wallet: `{user.wallet_address}`.\n\n'
+            f'Your Kyuma token balance is: `{token_balance}`\n'
+            f'Your ETH balance is: `{eth_balance}`\n\n'
+            f'Please register on the blockchain to continue.',
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔑 Register on Blockchain", callback_data='register')]
+            ])
+        )
+        return REGISTER
 
     await update.message.reply_text(
         '👋 Welcome to the E-Waste Recycling Bot! ♻️📱\n\n'
@@ -94,47 +105,104 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return TERMS
 
-
 async def terms_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
     if query.data == 'agree':
-        account = w3.eth.account.create()
-        context.user_data['wallet'] = account.address
+        user = get_user(update.effective_user.id)
+        if not user:
+            account = web3.eth.account.create()
+            context.user_data['wallet'] = account.address
+            create_user(update.effective_user.id, account.address, account.key.hex())
+
         await query.edit_message_text(
-            f'🎉 Great! Your wallet has been created.\n\n'
-            f'🔐 Wallet address: `{account.address}`\n\n'
-            f'Now, let\'s secure your account. Please create a strong password:'
+            f'🎉 Your wallet has been created.\n\n'
+            f'🔐 Wallet address: `{context.user_data["wallet"]}`\n\n'
+            f'Please register on the blockchain to start using the system.',
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔑 Register on Blockchain", callback_data='register')]
+            ])
         )
-        return PASSWORD
+        return REGISTER
     else:
         await query.edit_message_text('😔 We\'re sorry to see you go. You need to agree to use this system.')
         return ConversationHandler.END
+async def register_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    user = get_user(update.effective_user.id)
+    wallet_address = user.wallet_address
+
+    try:
+        # Get the nonce and chain ID for the transaction
+        nonce = web3.eth.get_transaction_count(wallet_address)
+        chain_id = web3.eth.chain_id
+
+        # Build the transaction for registering the user
+        transaction = contract.functions.registerUser().build_transaction({
+            'chainId': chain_id,
+            'gas': 2000000,  # Adjust gas as per your contract requirements
+            'gasPrice': web3.eth.gas_price,
+            'nonce': nonce,
+        })
+
+        # Sign the transaction with the user's private key
+        signed_txn = web3.eth.account.sign_transaction(transaction, private_key=user.private_key)
+
+        # Print all attributes of the signed transaction
+        logger.info(f"Signed Transaction: {signed_txn}")
+
+        # Send the raw transaction
+        tx_hash = web3.eth.send_raw_transaction(signed_txn.raw_transaction)
+
+        # Wait for the transaction receipt
+        tx_receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
+
+        # Check if the transaction was successful
+        if tx_receipt['status'] == 1:
+            await query.edit_message_text(
+                f'🎉 You have been registered successfully on the blockchain!\n\n'
+                f'Now, please create a strong password:'
+            )
+            return PASSWORD
+        else:
+            raise Exception("Transaction failed")
+
+    except Exception as e:
+        logger.error(f"Error in register_user: {e}")
+        await query.edit_message_text(
+            f'❌ Registration failed: {str(e)}\n\n'
+            f'Please make sure your wallet is funded with enough gas and try again.',
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔑 Try Registering Again", callback_data='register')]
+            ])
+        )
+        return REGISTER
 
 
 async def set_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     password = update.message.text
-    wallet_address = context.user_data['wallet']
     user_id = update.effective_user.id
 
     try:
-        tx_hash = contract.functions.registerUser(user_id, wallet_address).transact({'from': w3.eth.accounts[0]})
-        w3.eth.wait_for_transaction_receipt(tx_hash)
-        create_user(user_id, wallet_address, password)
+        session = Session()
+        user = session.query(User).filter_by(telegram_id=str(user_id)).first()
+        user.password = password
+        session.commit()
+        session.close()
 
         await update.message.reply_text(
-            '🎊 Congratulations! You have been registered successfully!\n\n'
-            '🔑 Your account is now set up and ready to use.\n'
-            '🔐 Remember to keep your password safe and never share it with anyone.\n'
+            '🎊 You have successfully set your password!\n\n'
+            '🔑 Remember to keep your password safe.\n'
             '🌟 Enjoy using our E-Waste Recycling System!'
         )
         return await show_main_menu(update, context)
     except Exception as e:
         logger.error(f"Error in set_password: {e}")
-        await update.message.reply_text(f'❌ Registration failed: {str(e)}')
+        await update.message.reply_text(f'❌ Failed to save your password: {str(e)}')
         return ConversationHandler.END
-
 
 async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
@@ -149,7 +217,6 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.callback_query.edit_message_text('🏠 Main Menu - Choose an option:', reply_markup=reply_markup)
     return MAIN_MENU
-
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -199,7 +266,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == 'main_menu':
         return await show_main_menu(update, context)
 
-
 async def earn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -208,9 +274,7 @@ async def earn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("♻️ Recycling functionality not implemented yet.")
     elif query.data == 'pickups':
         await query.edit_message_text("🚚 Pickup management functionality not implemented yet.")
-
     return EARN
-
 
 async def buyer_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -222,9 +286,7 @@ async def buyer_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("📋 Request management functionality not implemented yet.")
     elif query.data == 'confirm_transaction':
         await query.edit_message_text("✅ Transaction confirmation functionality not implemented yet.")
-
     return BUYER
-
 
 async def wallet_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -238,9 +300,7 @@ async def wallet_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("💸 Withdrawal functionality not implemented yet.")
     elif query.data == 'claim_gas':
         await query.edit_message_text("⛽ Gas claiming functionality not implemented yet.")
-
     return WALLET
-
 
 async def donate_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -250,14 +310,11 @@ async def donate_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("💳 Credit donation functionality not implemented yet.")
     elif query.data == 'donate_funds':
         await query.edit_message_text("💰 Fund donation functionality not implemented yet.")
-
     return DONATE
-
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text('🛑 Operation cancelled. Feel free to start over when you\'re ready!')
     return ConversationHandler.END
-
 
 def main():
     application = Application.builder().token(BOT_TOKEN).build()
@@ -266,6 +323,7 @@ def main():
         entry_points=[CommandHandler('start', start)],
         states={
             TERMS: [CallbackQueryHandler(terms_response)],
+            REGISTER: [CallbackQueryHandler(register_user)],
             PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_password)],
             MAIN_MENU: [CallbackQueryHandler(button)],
             EARN: [CallbackQueryHandler(earn_handler)],
@@ -277,9 +335,7 @@ def main():
     )
 
     application.add_handler(conv_handler)
-
     application.run_polling()
-
 
 if __name__ == '__main__':
     main()
