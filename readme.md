@@ -6,6 +6,14 @@
 
 The E-Waste Recycling Telegram DApp is a blockchain-based solution designed to incentivize and manage electronic waste recycling. This bot allows users to recycle e-waste, create and complete errands, and participate in a token-based economy built around responsible e-waste management.
 
+## Our Team
+
+- **Nessa**: Our hard-working idea generator and project visionary.
+- **Oliseg Hegnesis**: Full-stack developer bringing our ideas to life.
+- **Zuka Robinah**: Smart contract developer ensuring our blockchain integration is secure and efficient.
+
+Together, we're committed to making e-waste recycling accessible, rewarding, and impactful.
+
 ## Features
 
 - User registration and wallet creation
@@ -15,7 +23,7 @@ The E-Waste Recycling Telegram DApp is a blockchain-based solution designed to i
 - Token transfers and donations
 - User statistics tracking
 
-For testing go to https://t.me/KyumaBlocksBot
+For testing, go to https://t.me/KyumaBlocksBot
 
 ## Technologies Used
 
