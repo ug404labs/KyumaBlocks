@@ -336,7 +336,6 @@ async def process_create_errand(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def list_errands(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Display a list of available tasks (errands)."""
     query = update.callback_query
     await query.answer()
 
@@ -345,7 +344,7 @@ async def list_errands(update: Update, context: ContextTypes.DEFAULT_TYPE):
         available_errands = []
 
         for i in range(total_errands):
-            errand = contract.functions.errands(i).call()
+            errand = contract.functions.getErrand(i).call()
             if not errand[4]:  # If not completed
                 available_errands.append({
                     'id': i,
@@ -378,8 +377,7 @@ async def list_errands(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton("🔙 Back to Earn Menu", callback_data='earn')]
             ])
         )
-        return EARN
-
+    return EARN
 async def complete_errand(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Guide user through completing a task (errand)."""
     query = update.callback_query
