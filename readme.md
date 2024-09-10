@@ -1,6 +1,6 @@
 # E-Waste Recycling Telegram Bot
 
-![E-Waste Recycling Bot Logo](https://raw.githubusercontent.com/ug404labs/KyumaBlocks/assets/Green.png)
+![E-Waste Recycling Bot Logo](assets/BW.png)
 
 ## Overview
 
