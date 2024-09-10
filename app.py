@@ -149,7 +149,7 @@ async def register_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
         signed_txn = web3.eth.account.sign_transaction(transaction, private_key=user.private_key)
 
         # Send the raw transaction
-        tx_hash = web3.eth.send_raw_transaction(signed_txn.rawTransaction)
+        tx_hash = web3.eth.send_raw_transaction(signed_txn.raw_transaction)
 
         # Wait for the transaction receipt
         tx_receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
@@ -252,7 +252,7 @@ async def process_recycle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'nonce': web3.eth.get_transaction_count(user.wallet_address),
         })
         signed_tx = web3.eth.account.sign_transaction(tx, user.private_key)
-        tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        tx_hash = web3.eth.send_raw_transaction(signed_tx.raw_transaction)
         receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
 
         if receipt.status == 1:
@@ -283,7 +283,7 @@ async def process_create_errand(update: Update, context: ContextTypes.DEFAULT_TY
             'nonce': web3.eth.get_transaction_count(user.wallet_address),
         })
         signed_tx = web3.eth.account.sign_transaction(tx, user.private_key)
-        tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        tx_hash = web3.eth.send_raw_transaction(signed_tx.raw_transaction)
         receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
 
         if receipt.status == 1:
@@ -312,7 +312,7 @@ async def process_complete_errand(update: Update, context: ContextTypes.DEFAULT_
             'nonce': web3.eth.get_transaction_count(user.wallet_address),
         })
         signed_tx = web3.eth.account.sign_transaction(tx, user.private_key)
-        tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        tx_hash = web3.eth.send_raw_transaction(signed_tx.raw_transaction)
         receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
 
         if receipt.status == 1:
@@ -343,7 +343,7 @@ async def process_register_buyer(update: Update, context: ContextTypes.DEFAULT_T
             'nonce': web3.eth.get_transaction_count(user.wallet_address),
         })
         signed_tx = web3.eth.account.sign_transaction(tx, user.private_key)
-        tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        tx_hash = web3.eth.send_raw_transaction(signed_tx.raw_transaction)
         receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
 
         if receipt.status == 1:
@@ -374,7 +374,7 @@ async def process_process_ewaste(update: Update, context: ContextTypes.DEFAULT_T
             'nonce': web3.eth.get_transaction_count(user.wallet_address),
         })
         signed_tx = web3.eth.account.sign_transaction(tx, user.private_key)
-        tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        tx_hash = web3.eth.send_raw_transaction(signed_tx.raw_transaction)
         receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
 
         if receipt.status == 1:
@@ -405,7 +405,7 @@ async def process_pay_for_ewaste(update: Update, context: ContextTypes.DEFAULT_T
             'nonce': web3.eth.get_transaction_count(user.wallet_address),
         })
         signed_tx = web3.eth.account.sign_transaction(tx, user.private_key)
-        tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        tx_hash = web3.eth.send_raw_transaction(signed_tx.raw_transaction)
         receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
 
         if receipt.status == 1:
@@ -479,7 +479,7 @@ async def process_transfer_tokens(update: Update, context: ContextTypes.DEFAULT_
             'nonce': web3.eth.get_transaction_count(user.wallet_address),
         })
         signed_tx = web3.eth.account.sign_transaction(tx, user.private_key)
-        tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        tx_hash = web3.eth.send_raw_transaction(signed_tx.raw_transaction)
         receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
 
         if receipt.status == 1:
@@ -521,7 +521,7 @@ async def process_donate_project(update: Update, context: ContextTypes.DEFAULT_T
             'nonce': web3.eth.get_transaction_count(user.wallet_address),
         })
         signed_tx = web3.eth.account.sign_transaction(tx, user.private_key)
-        tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        tx_hash = web3.eth.send_raw_transaction(signed_tx.raw_transaction)
         receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
 
         if receipt.status == 1:
