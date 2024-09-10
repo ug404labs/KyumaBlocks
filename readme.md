@@ -60,9 +60,13 @@ The E-Waste Recycling Telegram DApp is a blockchain-based solution designed to i
 for 
 if faucet is empty, craete a waellet account and send base sepolia testnet token
 
+rename .env.example to .env
+get bot token from botfather and put it there on bot toke
+
 To start the bot, run:
 
 ```
+
 python app.py
 
 ```
