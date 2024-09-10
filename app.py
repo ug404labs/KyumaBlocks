@@ -118,6 +118,62 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ])
     )
     return TERMS
+async def register_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Register the user on the blockchain."""
+    query = update.callback_query
+    await query.answer()
+
+    user = get_user(query.from_user.id)
+    wallet_address = user.wallet_address
+
+    try:
+        # Estimate gas for the registration
+        gas_estimate = contract.functions.registerUser().estimate_gas({'from': wallet_address})
+
+        # Ensure sufficient gas
+        if not gas_tracker.ensure_sufficient_gas(wallet_address, gas_estimate):
+            await query.edit_message_text(
+                "Oops! You don't have enough gas for registration. Let's get you some first.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("⛽ Get Free Gas", callback_data='claim_gas')]
+                ])
+            )
+            return REGISTER
+
+        # Proceed with registration
+        nonce = web3.eth.get_transaction_count(wallet_address)
+        chain_id = web3.eth.chain_id
+
+        transaction = contract.functions.registerUser().build_transaction({
+            'chainId': chain_id,
+            'gas': int(gas_estimate * 1.2),  # Add 20% buffer
+            'gasPrice': web3.eth.gas_price,
+            'nonce': nonce,
+        })
+
+        signed_txn = web3.eth.account.sign_transaction(transaction, private_key=user.private_key)
+        tx_hash = web3.eth.send_raw_transaction(signed_txn.rawTransaction)
+        tx_receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
+
+        if tx_receipt['status'] == 1:
+            await query.edit_message_text(
+                "🎉 Congratulations! You're now registered on the blockchain.\n\n"
+                "Welcome to KyumaBlocks! Let's start making a difference together."
+            )
+            return await show_main_menu(update, context)
+        else:
+            raise Exception("Transaction failed")
+
+    except Exception as e:
+        logger.error(f"Error in register_user: {str(e)}")
+        await query.edit_message_text(
+            f"Oops! Registration didn't work out: {str(e)}\n\n"
+            "Let's try again later.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 Back to Main Menu", callback_data='main_menu')]
+            ])
+        )
+        return MAIN_MENU
 
 
 async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
